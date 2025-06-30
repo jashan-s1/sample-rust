@@ -125,6 +125,64 @@ async fn create_token(req: web::Json<CreateTokenRequest>) -> impl Responder {
     success(response)
 }
 
+#[derive(Deserialize)]
+struct MintTokenRequest {
+    mint: String,
+    destination: String,
+    authority: String,
+    amount: u64,
+}
+
+#[post("/token/mint")]
+async fn mint_token(req: web::Json<MintTokenRequest>) -> impl Responder {
+    let mint = match Pubkey::from_str(&req.mint) {
+        Ok(pk) => pk,
+        Err(_) => return error("Invalid mint pubkey"),
+    };
+
+    let destination = match Pubkey::from_str(&req.destination) {
+        Ok(pk) => pk,
+        Err(_) => return error("Invalid destination pubkey"),
+    };
+
+    let authority = match Pubkey::from_str(&req.authority) {
+        Ok(pk) => pk,
+        Err(_) => return error("Invalid authority pubkey"),
+    };
+
+    let instruction = match spl_token::instruction::mint_to(
+        &token_program_id(),
+        &mint,
+        &destination,
+        &authority,
+        &[], // multisig signers if any
+        req.amount,
+    ) {
+        Ok(instr) => instr,
+        Err(e) => return error(&format!("Failed to create mint instruction: {}", e)),
+    };
+
+    let serialized_data = base64::encode(&instruction.data);
+    let accounts = instruction
+        .accounts
+        .into_iter()
+        .map(|meta| AccountMetaResponse {
+            pubkey: meta.pubkey.to_string(),
+            is_signer: meta.is_signer,
+            is_writable: meta.is_writable,
+        })
+        .collect::<Vec<_>>();
+
+    let response = CreateTokenResponse {
+        program_id: instruction.program_id.to_string(),
+        accounts,
+        instruction_data: serialized_data,
+    };
+
+    success(response)
+}
+
+
 // ======= MAIN =======
 
 #[actix_web::main]
@@ -139,6 +197,7 @@ async fn main() -> std::io::Result<()> {
             .service(hello)
             .service(generate_keypair)
             .service(create_token)
+            .service(mint_token)
     })
     .bind(addr)?
     .run()
