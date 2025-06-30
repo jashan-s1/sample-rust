@@ -3,21 +3,18 @@ use std::env;
 
 #[get("/")]
 async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello from Actix-Web on Render!")
+    HttpResponse::Ok().body("Hello from Actix on Railway!")
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Get the PORT from environment or default to 8080
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
-    println!("🚀 Server running on {}", addr);
+    println!("🚀 Starting on http://{}", addr);
 
-    HttpServer::new(|| {
-        App::new().service(hello)
-    })
-    .bind(addr)?
-    .run()
-    .await
+    HttpServer::new(|| App::new().service(hello))
+        .bind(addr)?
+        .run()
+        .await
 }
