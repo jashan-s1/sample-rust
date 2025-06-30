@@ -8,5 +8,5 @@ RUN cargo build --release
 
 # Runtime stage
 FROM debian:buster-slim
-COPY --from=builder /usr/src/app/target/release/your_binary_name /usr/local/bin/app
+COPY --from=builder /usr/src/app/target/release/sample_rust /usr/local/bin/app
 CMD ["app"]
