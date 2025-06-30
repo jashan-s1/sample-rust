@@ -10,7 +10,6 @@ use bs58;
 use base64;
 use spl_token::{instruction::initialize_mint, id as token_program_id};
 use solana_sdk::system_instruction;
-// ======= RESPONSE WRAPPERS =======
 
 #[derive(Serialize)]
 struct SuccessResponse<T: Serialize> {
@@ -35,14 +34,12 @@ fn error(message: &str) -> HttpResponse {
     })
 }
 
-// ======= GET / =======
 
 #[get("/")]
 async fn hello() -> impl Responder {
     success("Hi Rusty")
 }
 
-// ======= POST /keypair =======
 
 #[derive(Serialize)]
 struct KeypairResponse {
@@ -53,13 +50,11 @@ struct KeypairResponse {
 #[post("/keypair")]
 async fn generate_keypair() -> impl Responder {
     let keypair = Keypair::new();
-    let pubkey = keypair.pubkey().to_string(); // base58
+    let pubkey = keypair.pubkey().to_string();
     let secret = bs58::encode(keypair.to_bytes()).into_string();
 
     success(KeypairResponse { pubkey, secret })
 }
-
-// ======= POST /token/create =======
 
 #[derive(Deserialize)]
 struct CreateTokenRequest {
@@ -155,7 +150,7 @@ async fn mint_token(req: web::Json<MintTokenRequest>) -> impl Responder {
         &mint,
         &destination,
         &authority,
-        &[], // multisig signers if any
+        &[],
         req.amount,
     ) {
         Ok(instr) => instr,
@@ -301,7 +296,6 @@ async fn send_sol(req: web::Json<SendSolRequest>) -> impl Responder {
         return error("Lamports must be greater than 0");
     }
 
-    // Create system transfer instruction
     let instruction = system_instruction::transfer(&from, &to, req.lamports);
 
     let serialized = base64::encode(instruction.data.clone());
@@ -318,7 +312,6 @@ async fn send_sol(req: web::Json<SendSolRequest>) -> impl Responder {
 }
 
 
-// ======= MAIN =======
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
