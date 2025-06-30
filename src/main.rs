@@ -39,7 +39,7 @@ fn error(message: &str) -> HttpResponse {
 
 #[get("/")]
 async fn hello() -> impl Responder {
-    success("Hello from Actix on Railway!")
+    success("Hi Rusty")
 }
 
 // ======= POST /keypair =======
