@@ -9,7 +9,7 @@ use std::{env, str::FromStr};
 use bs58;
 use base64;
 use spl_token::{instruction::initialize_mint, id as token_program_id};
-
+use solana_sdk::system_instruction;
 // ======= RESPONSE WRAPPERS =======
 
 #[derive(Serialize)]
@@ -182,6 +182,141 @@ async fn mint_token(req: web::Json<MintTokenRequest>) -> impl Responder {
     success(response)
 }
 
+#[derive(Deserialize)]
+struct SignMessageRequest {
+    message: String,
+    secret: String,
+}
+
+#[derive(Serialize)]
+struct SignMessageResponse {
+    signature: String,
+    public_key: String,
+    message: String,
+}
+
+#[post("/message/sign")]
+async fn sign_message(req: web::Json<SignMessageRequest>) -> impl Responder {
+    if req.message.is_empty() || req.secret.is_empty() {
+        return error("Missing required fields");
+    }
+
+    let secret_bytes = match bs58::decode(&req.secret).into_vec() {
+        Ok(bytes) => bytes,
+        Err(_) => return error("Invalid base58 secret key"),
+    };
+
+    if secret_bytes.len() != 64 {
+        return error("Secret key must be 64 bytes long");
+    }
+
+    let keypair = match Keypair::from_bytes(&secret_bytes) {
+        Ok(kp) => kp,
+        Err(_) => return error("Invalid keypair bytes"),
+    };
+
+    let signature = keypair.sign_message(req.message.as_bytes());
+
+    success(SignMessageResponse {
+        signature: base64::encode(signature.as_ref()),
+        public_key: keypair.pubkey().to_string(),
+        message: req.message.clone(),
+    })
+}
+
+#[derive(Deserialize)]
+struct VerifyMessageRequest {
+    message: String,
+    signature: String,
+    pubkey: String,
+}
+
+#[derive(Serialize)]
+struct VerifyMessageResponse {
+    valid: bool,
+    message: String,
+    pubkey: String,
+}
+
+#[post("/message/verify")]
+async fn verify_message(req: web::Json<VerifyMessageRequest>) -> impl Responder {
+    use solana_sdk::signature::Signature;
+    use solana_sdk::pubkey::Pubkey;
+
+    if req.message.is_empty() || req.signature.is_empty() || req.pubkey.is_empty() {
+        return error("Missing required fields");
+    }
+
+    let pubkey = match Pubkey::from_str(&req.pubkey) {
+        Ok(pk) => pk,
+        Err(_) => return error("Invalid public key"),
+    };
+
+    let signature_bytes = match base64::decode(&req.signature) {
+        Ok(bytes) => bytes,
+        Err(_) => return error("Invalid base64 signature"),
+    };
+
+    let signature = match Signature::try_from(signature_bytes.as_slice()) {
+        Ok(sig) => sig,
+        Err(_) => return error("Invalid signature format"),
+    };
+
+    let is_valid = signature.verify(pubkey.as_ref(), req.message.as_bytes());
+
+    success(VerifyMessageResponse {
+        valid: is_valid,
+        message: req.message.clone(),
+        pubkey: req.pubkey.clone(),
+    })
+}
+
+#[derive(Deserialize)]
+struct SendSolRequest {
+    from: String,
+    to: String,
+    lamports: u64,
+}
+
+#[derive(Serialize)]
+struct SendSolResponse {
+    program_id: String,
+    accounts: Vec<String>,
+    instruction_data: String,
+}
+
+#[post("/send/sol")]
+async fn send_sol(req: web::Json<SendSolRequest>) -> impl Responder {
+    let from = match Pubkey::from_str(&req.from) {
+        Ok(pk) => pk,
+        Err(_) => return error("Invalid sender address"),
+    };
+
+    let to = match Pubkey::from_str(&req.to) {
+        Ok(pk) => pk,
+        Err(_) => return error("Invalid recipient address"),
+    };
+
+    if req.lamports == 0 {
+        return error("Lamports must be greater than 0");
+    }
+
+    // Create system transfer instruction
+    let instruction = system_instruction::transfer(&from, &to, req.lamports);
+
+    let serialized = base64::encode(instruction.data.clone());
+
+    success(SendSolResponse {
+        program_id: instruction.program_id.to_string(),
+        accounts: instruction
+            .accounts
+            .into_iter()
+            .map(|meta| meta.pubkey.to_string())
+            .collect(),
+        instruction_data: serialized,
+    })
+}
+
 
 // ======= MAIN =======
 
@@ -198,6 +333,9 @@ async fn main() -> std::io::Result<()> {
             .service(generate_keypair)
             .service(create_token)
             .service(mint_token)
+            .service(sign_message)
+            .service(verify_message)
+            .service(send_sol)
     })
     .bind(addr)?
     .run()
